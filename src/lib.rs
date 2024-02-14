@@ -1,9 +1,10 @@
 extern crate libc;
 
 use libc::{c_int, c_void, sockaddr, socklen_t, ssize_t /*, AF_INET, SOCK_DGRAM*/};
-use std::ffi::CString;
+use std::{ffi::CString, collections::HashMap, os::fd::FromRawFd, sync::Mutex};
 
 lazy_static::lazy_static! {
+    static ref SOCKETS: Mutex<HashMap<c_int, std::net::UdpSocket>> = Mutex::new(HashMap::new());
     static ref REAL_SOCKET: fn(c_int, c_int, c_int) -> c_int = unsafe {
         let func_ptr = libc::dlsym(libc::RTLD_NEXT, CString::new("socket").unwrap().into_raw());
         std::mem::transmute(func_ptr)
@@ -24,8 +25,10 @@ lazy_static::lazy_static! {
 
 #[no_mangle]
 pub unsafe extern "C" fn socket(domain: c_int, type_: c_int, protocol: c_int) -> c_int {
+    let mut sockets = SOCKETS.lock().unwrap();
     let result = REAL_SOCKET(domain, type_, protocol);
     println!("socket({domain}, {type_}, {protocol}) => {result}");
+    sockets.insert(result.into(), std::net::UdpSocket::from_raw_fd(result));
     result
 }
 
